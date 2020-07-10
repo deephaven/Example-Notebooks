@@ -1,0 +1,64 @@
+##  Deephaven - PythonListenerAdapter Notebook - Python ONLY
+##  https://docs.deephaven.io/
+
+"""
+See the help entry for documentation
+>>>   help("deephaven.PythonListenerAdapter")
+"""
+
+from deephaven import *
+import logging
+
+
+# Setting up an appropriate dynamic table
+foo = lambda x: x*x
+z = 42
+dynamicTable = db.timeTable("00:00:01").update("I=i", "Y=foo.call(i)", "Z=z")
+# The assumption for this example is there already exists some dynamic table, and there
+# is an implicit monitoring task.
+
+
+# Option 1: Setting up our onUpdate implementation as a method
+def simpleMethod(added, removed, modified):
+    """
+    The only abstract method which we must provide, otherwise InstrumentedListenerAdapter takes care of it
+    :param added: Index of elements being added
+    :param removed: Index of elements being removed
+    :param modified: Index of elements being modified
+    """
+
+    logging.warning("simpleMethod: added {}, removed {}, modified {}".format(added.size(),
+                                                                             removed.size(),
+                                                                             modified.size()))
+
+
+# Option 2: Setting up our listener implementation as a class, so we have some persistent state
+#   Note that most table listener purposes (monitoring position or the like) would probably
+#   require some kind of state
+class simpleClass(object):
+    def __init__(self):
+        self.cumulative = {'added': 0, 'removed': 0, 'modified': 0}
+
+    def onUpdate(self, added, removed, modified):
+        """
+        The only abstract method which we must provide, otherwise InstrumentedListenerAdapter takes care of it
+        :param added: Index of elements being added
+        :param removed: Index of elements being removed
+        :param modified: Index of elements being modified
+        """
+
+        self.cumulative['added'] += added.size()
+        self.cumulative['removed'] += removed.size()
+        self.cumulative['modified'] += modified.size()
+        logging.warning("simpleClass: added {}, removed {}, modified {}".format(added.size(),
+                                                                                removed.size(),
+                                                                                modified.size()))
+        logging.warning("simpleClass: Cumulative actions {}".format(self.cumulative))
+
+
+#######
+# perform our listening using each version
+PythonListenerAdapter(dynamicTable, simpleMethod,
+                      description="Test Listener 1", retain=True, replayInitialImage=True)
+PythonListenerAdapter(dynamicTable, simpleClass,
+                      description="Test Listener 2", retain=True, replayInitialImage=True)
