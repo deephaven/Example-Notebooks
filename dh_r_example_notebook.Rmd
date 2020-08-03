@@ -1,0 +1,99 @@
+---
+Integrating R With Deephaven Example Notebook
+---
+
+This notebook demonstrates how to use Deephaven's R integration.
+
+To execute a code chunk, click in the chunk and either click the *Run* button.  To run all chuncks, click the *Run All* button.
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside the notebook.  Click the *Preview* button.  *Preview* does not run any R code chunks.  It displays the output of the chunk when it was last run in the editor.
+
+# Configuration
+
+Configure variables needed to connect to the system.
+
+* home: Your home directory
+* system: Deephaven system to connect to (as configured in the launcher)
+* keyfile: Key file used to authenticate when connecting to the Deephaven system
+* workerHeapGB: Gigabytes of heap for the Deephaven query worker
+* jvmHeapGB: Gigabytes of heap for the local Java Virtual Machine (JVM)
+* workerHost: host to run the Deephaven query worker on
+
+```{r}
+home <- "/Users/userName"
+system <- "dh-demo"
+keyfile <- sprintf("%s/.priv.dh-demo.base64.txt",home)
+workerHeapGB <- 4
+jvmHeapGB <- 2
+workerHost <- "dh-demo-query4.int.illumon.com"
+```
+
+# Connect
+
+Connect to the Deephaven system.  The connection process creates a query worker on the Deephaven system for this session.  All future queries for the session are executed in this worker.
+
+To determine the proper value for *JAVA_HOME*, run *R CMD javareconf* from the command line.
+
+```{r}
+# Run the following to get java details:  R CMD javareconf
+Sys.setenv(JAVA_HOME = '/Library/Java/JavaVirtualMachines/jdk1.8.0_121.jdk/Contents/Home/')
+source(sprintf("%s/iris/.programfiles/%s/integrations/r/irisdb.R",home,system))
+
+idb.init(devroot = sprintf("%s/iris/.programfiles/%s/",home,system), 
+         workspace = sprintf("%s/iris/workspaces/%s/workspaces/r/",home,system), 
+         propfile = "iris-common.prop", 
+         userHome = home,
+         keyfile = keyfile, 
+         librarypath = sprintf("%s/iris/.programfiles/%s/java_lib",home,system), 
+         log4jconffile = NULL,
+         workerHeapGB = workerHeapGB, 
+         jvmHeapGB = jvmHeapGB, 
+         workerHost = workerHost,
+         verbose = FALSE, 
+         jvmArgs = c("-Dservice.name=iris_console",sprintf("-Ddh.config.client.bootstrap=%s/iris/.programfiles/%s/dh-config/clients",home,system)),
+         classpathAdditions = c(sprintf("%s/iris/.programfiles/%s/resources",home,system),sprintf("%s/iris/.programfiles/%s/java_lib",home,system)),
+         jvmForceInit = FALSE)
+```
+
+# Execute A Command On The Deephaven Query Worker
+
+Compute *x=1+2* on the Deephaven query worker, then pull the value back to the local R session.
+
+```{r}
+idb.execute("x=1+2")
+x <- idb.get("x")
+print(x)
+```
+
+# Pull A Deephaven Query Result To A Local R Dataframe
+
+Compute the number of stock trades for each date from the *LearnDeephaven/StockTrades* table.  The result is stored as *t1* on the Deephaven query worker.  *t1* is copied from the server to the local R session.
+
+
+```{r}
+idb.execute('t = db.t("LearnDeephaven","StockTrades"); t1=t.countBy("Count","Date")')
+t1 <- idb.get.df("t1")
+print(t1)
+```
+
+# Push A Local R Dataframe To The Deephaven Query Worker
+
+Create a new table *t2* in the local R session and copy the table to the Deephaven query worker.
+
+```{r}
+t2 <- t1[2:3,]
+print(t2)
+idb.push.df("t2",t2)
+```
+
+# Use The Pushed R Dataframe In A Deephaven Query
+
+Table *t* is the result of *t = db.t("LearnDeephaven","StockTrades")*, computed earlier in the session.  Table *t2* is the R dataframe pushed to the Deephaven query worker in the previous step.  These tables are used to compute the total dollars traded per underlying security for the dates specified in *t2*.  This result is then pulled to the local R session.
+
+
+```{r}
+idb.execute('t3 = t.whereIn(t2,"Date").view("USym","Dollars=Last*Size").sumBy("USym").sortDescending("Dollars")')
+t3 <- idb.get.df("t3")
+print(t3)
+```
+
